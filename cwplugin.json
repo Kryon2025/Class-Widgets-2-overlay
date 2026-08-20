@@ -1,0 +1,12 @@
+{
+  "id": "com.overlay",
+  "name": "堆叠组件",
+  "version": "1.0.0",
+  "api_version": "~=0.6.0",
+  "entry": "main.py",
+  "author": "松峰",
+  "description": "堆叠插件：将多个组件叠放，以最大组件尺寸为固定大小，按设定间隔循环滚动展示。在桌面组件编辑界面中右键堆叠组件可添加/移除成员组件。",
+  "url": "https://github.com/Kryon2025/Class-Widgets-2-overlay.git",
+  "readme": "README.md",
+  "icon": "icon.png"
+}
