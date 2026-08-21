@@ -273,8 +273,8 @@ Item {
 
         Text {
             anchors.centerIn: parent
-            text: "切换"
-            rotation: -90
+            // 竖排显示（不旋转，字头朝上）
+            text: "切\n换"
             color: Theme.isDark() ? Qt.rgba(1, 1, 1, 0.85) : Qt.rgba(0, 0, 0, 0.75)
             font.pixelSize: 13
             font.weight: Font.DemiBold

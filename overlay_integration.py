@@ -11,14 +11,19 @@
 本次启动即生效，无需重启；主程序被更新覆盖后，on_load 检测到
 补丁缺失会自动重新安装。
 """
+import shutil
 from pathlib import Path
 
 # 主程序关键文件（相对主程序根目录）
 _CONTAINER_REL = Path("src") / "qml" / "ClassWidgets" / "Components" / "WidgetsContainer.qml"
 _WLOADER_REL = Path("src") / "qml" / "ClassWidgets" / "Components" / "WidgetLoader.qml"
+_DIALOG_REL = Path("src") / "qml" / "ClassWidgets" / "Components" / "dialogs" / "AddOverlayMemberDialog.qml"
 _BACKUP_ROOT = ".cwplugin_backups"
 _BACKUP_SUB = "overlay"
 _MARKER = "overlayEditMode"  # 补丁已安装的特征串
+# 对话框资源（打包在插件内），官方主程序没有此文件，安装补丁时复制过去
+_DIALOG_SRC = Path(__file__).resolve().parent / "host_patch" / "AddOverlayMemberDialog.qml"
+_NO_DIALOG_MARK = "NO_DIALOG_ORIG"  # 备份标记：官方版原本没有对话框文件
 
 
 def find_app_root():
@@ -211,23 +216,34 @@ _WLOADER_OPS = [
 # ── 对外接口 ────────────────────────────────────────────────
 
 def install(logger):
-    """安装主程序集成补丁（幂等）。主程序路径不可用时静默跳过。"""
+    """安装主程序集成补丁（幂等）。主程序路径不可用时静默跳过。
+
+    补丁 = 修改 WidgetsContainer.qml + WidgetLoader.qml，并把
+    AddOverlayMemberDialog.qml 复制到主程序（官方版没有该文件）。
+    """
     root = find_app_root()
     if root is None:
         logger.warning("[overlay] 未找到主程序目录，跳过主程序集成")
         return False
     container = root / _CONTAINER_REL
     wloader = root / _WLOADER_REL
+    dialog = root / _DIALOG_REL
     backup_dir = root / _BACKUP_ROOT / _BACKUP_SUB
 
     c_text = container.read_text(encoding="utf-8", errors="replace")
     w_text = wloader.read_text(encoding="utf-8", errors="replace")
+    dialog_existed = dialog.is_file()
     if _MARKER in c_text or _MARKER in w_text:
+        # 已打补丁：确保备份存在 + 对话框文件补齐（主程序更新可能删了它）
         if not (backup_dir / "WidgetsContainer.qml.orig").exists():
-            # 历史遗留：已打补丁但无备份（如主程序被覆盖后旧备份丢失）→ 记录当前为还原点
             backup_dir.mkdir(parents=True, exist_ok=True)
             (backup_dir / "WidgetsContainer.qml.orig").write_bytes(container.read_bytes())
             (backup_dir / "WidgetLoader.qml.orig").write_bytes(wloader.read_bytes())
+            _record_dialog_backup(backup_dir, dialog, dialog_existed)
+        if not dialog.is_file() and _DIALOG_SRC.is_file():
+            dialog.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(_DIALOG_SRC, dialog)
+            logger.info("[overlay] 已补全成员选择对话框文件")
         logger.info("[overlay] 主程序集成已就绪")
         return True
 
@@ -235,9 +251,15 @@ def install(logger):
     backup_dir.mkdir(parents=True, exist_ok=True)
     (backup_dir / "WidgetsContainer.qml.orig").write_bytes(container.read_bytes())
     (backup_dir / "WidgetLoader.qml.orig").write_bytes(wloader.read_bytes())
+    _record_dialog_backup(backup_dir, dialog, dialog_existed)
 
-    # 打补丁；任一锚点失败则整体回滚
+    # 注入；任一环节失败则整体回滚
     try:
+        if not dialog.is_file():
+            if not _DIALOG_SRC.is_file():
+                raise RuntimeError("缺少 AddOverlayMemberDialog.qml 资源文件")
+            dialog.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(_DIALOG_SRC, dialog)
         c_text, c_crlf = _read(container)
         c_text = _apply(c_text, _CONTAINER_OPS, "WidgetsContainer.qml")
         _write(container, c_text, c_crlf)
@@ -248,8 +270,17 @@ def install(logger):
         restore(logger)
         logger.error(f"[overlay] 主程序集成补丁失败，已还原: {e}")
         return False
-    logger.info("[overlay] 主程序集成补丁已安装（右键堆叠组件 → 编辑成员组件）")
+    logger.info("[overlay] 主程序集成补丁已安装（3 个文件：2 补丁 + 1 对话框）")
     return True
+
+
+def _record_dialog_backup(backup_dir, dialog, existed):
+    """记录对话框文件的官方原状：存在则备份内容，不存在则打标记。"""
+    if existed:
+        (backup_dir / "AddOverlayMemberDialog.qml.orig").write_bytes(dialog.read_bytes())
+    else:
+        (backup_dir / _NO_DIALOG_MARK).write_text(
+            "official ClassWidgets has no AddOverlayMemberDialog.qml\n", encoding="utf-8")
 
 
 def restore(logger):
@@ -269,9 +300,13 @@ def restore(logger):
             dst.write_bytes(src.read_bytes())
         else:
             ok = False
-    try:
-        backup_dir.rmdir() if not any(backup_dir.iterdir()) else None
-    except OSError:
-        pass
+    # 对话框文件：官方原本有 → 还原；官方原本没有 → 删除注入的
+    if (backup_dir / "AddOverlayMemberDialog.qml.orig").is_file():
+        (root / _DIALOG_REL).write_bytes(
+            (backup_dir / "AddOverlayMemberDialog.qml.orig").read_bytes())
+    elif (backup_dir / _NO_DIALOG_MARK).is_file():
+        (root / _DIALOG_REL).unlink(missing_ok=True)
+    # 还原完成后备份已无意义，整体清理
+    shutil.rmtree(backup_dir, ignore_errors=True)
     logger.info("[overlay] 主程序已还原（移除编辑成员组件入口）")
     return ok
