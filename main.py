@@ -7,12 +7,14 @@
 """
 
 import json
+import os
 from pathlib import Path
 
 from loguru import logger
 from PySide6.QtCore import Signal, Slot
 
 from ClassWidgets.SDK import CW2Plugin, PluginAPI
+from overlay_integration import install as _install_integration, restore as _restore_integration
 
 # 堆叠组件自身的 widget id（禁止添加自己，避免递归）
 _OVERLAY_WIDGET_ID = "com.overlay"
@@ -37,6 +39,12 @@ class Plugin(CW2Plugin):
     def on_load(self):
         super().on_load()
         try:
+            # 主程序集成：右键"编辑成员组件"入口（插件加载时自动安装/自愈，
+            # 先于主程序 QML 引擎加载，本次启动即生效）
+            _install_integration(logger)
+        except Exception as e:
+            logger.warning(f"[overlay] 主程序集成安装异常: {e}")
+        try:
             self.api.widgets.register(
                 widget_id=_OVERLAY_WIDGET_ID,
                 name="堆叠 / Stack",
@@ -51,6 +59,11 @@ class Plugin(CW2Plugin):
 
     def on_unload(self):
         super().on_unload()
+        try:
+            # 主程序集成还原：卸载/禁用插件时移除补丁，还原官方原版
+            _restore_integration(logger)
+        except Exception as e:
+            logger.warning(f"[overlay] 主程序集成还原异常: {e}")
 
     # ── 成员管理 ─────────────────────────────────────────────
 
@@ -66,7 +79,9 @@ class Plugin(CW2Plugin):
     @Slot(str, result=bool)
     def addMember(self, widget_id: str) -> bool:
         """添加成员组件（去重；禁止添加堆叠组件自身）。"""
-        wid = str(widget_id).strip()
+        if not isinstance(widget_id, str):
+            return False
+        wid = widget_id.strip()
         if not wid or wid == _OVERLAY_WIDGET_ID or wid in self._members:
             return False
         self._members.append(wid)
@@ -105,20 +120,29 @@ class Plugin(CW2Plugin):
 
     # ── 持久化 ───────────────────────────────────────────────
 
+    @staticmethod
+    def _atomic_write_json(path: Path, payload: dict) -> None:
+        """临时文件 + os.replace 原子写，避免中途崩溃留下截断文件。"""
+        tmp = path.with_suffix(path.suffix + ".tmp")
+        tmp.write_text(json.dumps(payload, ensure_ascii=False), encoding="utf-8")
+        os.replace(tmp, path)
+
     def _load_members(self) -> None:
         try:
             if self._members_file.exists():
                 data = json.loads(self._members_file.read_text(encoding="utf-8"))
-                self._members = [str(x) for x in (data.get("members") or [])]
+                raw = data.get("members") or []
+                # 只接受非空字符串，过滤自身 id 并去重，避免幽灵成员
+                cleaned = [x.strip() for x in raw
+                           if isinstance(x, str) and x.strip()
+                           and x.strip() != _OVERLAY_WIDGET_ID]
+                self._members = list(dict.fromkeys(cleaned))
         except Exception:
             self._members = []
 
     def _save_members(self) -> None:
         try:
-            self._members_file.write_text(
-                json.dumps({"members": self._members}, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            self._atomic_write_json(self._members_file, {"members": self._members})
         except Exception as e:
             logger.warning(f"[overlay] 保存成员列表失败: {e}")
 
@@ -126,16 +150,17 @@ class Plugin(CW2Plugin):
         try:
             if self._settings_file.exists():
                 data = json.loads(self._settings_file.read_text(encoding="utf-8"))
-                self._member_settings = {str(k): dict(v or {})
-                                         for k, v in (data.get("settings") or {}).items()}
+                settings = {}
+                for k, v in (data.get("settings") or {}).items():
+                    # 单个坏值只跳过该成员，不丢弃全部
+                    if isinstance(v, dict):
+                        settings[str(k)] = dict(v)
+                self._member_settings = settings
         except Exception:
             self._member_settings = {}
 
     def _save_member_settings(self) -> None:
         try:
-            self._settings_file.write_text(
-                json.dumps({"settings": self._member_settings}, ensure_ascii=False),
-                encoding="utf-8",
-            )
+            self._atomic_write_json(self._settings_file, {"settings": self._member_settings})
         except Exception as e:
             logger.warning(f"[overlay] 保存成员设置失败: {e}")

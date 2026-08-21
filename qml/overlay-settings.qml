@@ -54,6 +54,17 @@ SettingsLayout {
 
     SettingCard {
         Layout.fillWidth: true
+        title: "显示切换条"
+        description: "在组件右侧显示“切换”按钮，点击可手动切换到下一个成员组件。"
+
+        Switch {
+            checked: settings.show_switch_bar !== false
+            onCheckedChanged: settings.show_switch_bar = checked
+        }
+    }
+
+    SettingCard {
+        Layout.fillWidth: true
         title: "成员组件"
         description: "已叠加到本组件内的成员，可在桌面组件编辑界面中右键“编辑重叠组件”添加/移除。"
 

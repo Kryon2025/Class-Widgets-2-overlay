@@ -34,13 +34,19 @@ Item {
     property var memberHeights: []
     property int listSpacing: 10
 
-    implicitWidth: Math.max(96, root.maxW)
+    // 右侧切换条占位宽度（仅显示切换条时预留，保证不超出组件边界被裁剪）
+    property int switchBarSpace: root.showSwitchBar && root.members.length > 0 ? 48 : 0
+
+    implicitWidth: Math.max(96, root.maxW + root.switchBarSpace)
     implicitHeight: root.overlayListMode
         ? Math.max(80, root.listTotalH())
         : Math.max(80, root.maxH)
 
     // 轮播间隔由组件设置 interval_ms 控制（列表模式 / 编辑模式暂停）
     property int carouselInterval: settings && settings.interval_ms ? settings.interval_ms : 5000
+
+    // 右侧“切换”条显示开关（组件设置 show_switch_bar 控制，默认显示）
+    property bool showSwitchBar: settings && settings.show_switch_bar !== false
 
     Timer {
         id: carouselTimer
@@ -94,6 +100,28 @@ Item {
         return h + root.listSpacing * Math.max(0, root.memberHeights.length - 1)
     }
 
+    // 成员设置的最终值 = 默认设置 + 个性化设置覆盖（保证未保存过的字段
+    // 显示组件默认值，与组件实际运行状态一致）
+    function mergedMemberSettings(wid) {
+        var d = root.findDef(wid)
+        var defaults0 = d ? (d.default_settings || {}) : {}
+        var saved0 = (root.backend && root.backend.getMemberSettings)
+            ? (root.backend.getMemberSettings(wid) || {})
+            : {}
+        var merged = {}
+        for (var k in defaults0) merged[k] = defaults0[k]
+        for (var k2 in saved0) merged[k2] = saved0[k2]
+        return merged
+    }
+
+    // 点击“切换”条：切到下一个成员并重置轮播计时（不触发组件自动隐藏）
+    function nextMember() {
+        if (root.members.length > 1) {
+            root.activeIndex = (root.activeIndex + 1) % root.members.length
+            if (carouselTimer.running) carouselTimer.restart()
+        }
+    }
+
     // 右键成员 → 单独编辑该组件设置
     function openMemberSettings(i) {
         var wid = root.members[i]
@@ -103,23 +131,23 @@ Item {
         var sq = d.settingsQml || d.settings_qml || ""
         console.log("[overlay] openMemberSettings:", wid, "settingsQml:", sq)
         if (!sq) return
-        var saved = root.backend.getMemberSettings(wid) || {}
+        var merged = root.mergedMemberSettings(wid)
         memberSettingsDialog.currentMemberId = wid
         settingsLoader.setSource(sq, {
-            "settings": saved,
+            "settings": merged,
             "instanceId": ""
         })
-        memberSettingsDialog.visible = true
+        memberSettingsDialog.open()
     }
 
     // 保存成员设置后同步到已加载的成员实例
     function applyMemberSettings(wid) {
-        var saved = root.backend.getMemberSettings(wid) || {}
+        var merged = root.mergedMemberSettings(wid)
         for (var k = 0; k < memberRepeater.count; k++) {
             var obj = memberRepeater.itemAt(k)
             if (obj && obj.memberId === wid && obj.item
                     && obj.item.settings !== undefined) {
-                obj.item.settings = saved
+                obj.item.settings = merged
             }
         }
     }
@@ -150,7 +178,8 @@ Item {
             id: memberLoader
             asynchronous: true
             z: index === root.activeIndex ? 1 : 0
-            x: root.overlayListMode ? 0 : (parent.width - width) / 2
+            // 轮播模式在内容区（排除右侧切换条）居中；列表模式纵列
+            x: root.overlayListMode ? 0 : (Math.max(0, parent.width - root.switchBarSpace - width)) / 2
             y: root.overlayListMode ? root.listY(index) : (parent.height - height) / 2
             opacity: root.overlayListMode
                 ? 1
@@ -204,12 +233,9 @@ Item {
                     if (item) {
                         // 禁用成员自身的尺寸动画，保证堆叠布局稳定（不随成员尺寸变化抖动）
                         if (item.hasOwnProperty("animateSize")) item.animateSize = false
-                        // 成员设置：优先使用右键单独保存的个性化设置，否则用默认设置
-                        var saved = root.backend && root.backend.getMemberSettings
-                            ? (root.backend.getMemberSettings(memberId) || {})
-                            : {}
-                        var hasSaved = saved && Object.keys(saved).length > 0
-                        item.settings = hasSaved ? saved : (d.default_settings || {})
+                        // 成员设置 = 默认设置 + 个性化覆盖，保证开关等控件的
+                        // 初始显示与组件实际运行状态一致
+                        item.settings = root.mergedMemberSettings(memberId)
                     }
                 }
                 // 记录成员尺寸（容器随之固定；列表模式用于纵列排布）
@@ -228,123 +254,130 @@ Item {
         }
     }
 
-    // 成员设置对话框（自绘：全屏遮罩 + 居中面板，不依赖 Dialog/Button 类型，避免被 RinUI 遮蔽）
-    Item {
-        id: memberSettingsDialog
-        objectName: "memberSettingsDialog"
-        property string currentMemberId: ""
-        visible: false
-        z: 10000
-        width: Screen.width
-        height: Screen.height
+    // 右侧“切换”竖条：点击切换到下一个成员（消费点击，不触发组件自动隐藏）；
+    // 无成员 / 编辑堆叠组件（成员列表与增删界面）时隐藏，可在组件设置中开关
+    Rectangle {
+        id: switchBar
+        objectName: "switchBar"
+        visible: root.showSwitchBar && root.members.length > 0 && !root.overlayListMode
+        z: 5
+        width: 36
+        height: Math.min(120, Math.max(40, root.maxH))
+        radius: 12
+        // 固定在组件内部右侧（组件宽度已为其预留空间，不被外层裁剪）
+        x: root.width - 48
+        y: (root.height - height) / 2
+        color: Theme.isDark() ? Qt.rgba(0.14, 0.14, 0.16, 0.9) : Qt.rgba(0.98, 0.98, 1, 0.92)
+        border.color: Theme.isDark() ? Qt.rgba(1, 1, 1, 0.18) : Qt.rgba(0, 0, 0, 0.12)
+        border.width: 1
 
-        // 遮罩（点击外部关闭）
-        Rectangle {
-            anchors.fill: parent
-            color: Qt.rgba(0, 0, 0, 0.35)
-            MouseArea {
-                anchors.fill: parent
-                onClicked: memberSettingsDialog.visible = false
-            }
+        Text {
+            anchors.centerIn: parent
+            text: "切换"
+            rotation: -90
+            color: Theme.isDark() ? Qt.rgba(1, 1, 1, 0.85) : Qt.rgba(0, 0, 0, 0.75)
+            font.pixelSize: 13
+            font.weight: Font.DemiBold
         }
 
-        // 面板
-        Rectangle {
-            anchors.centerIn: parent
-            width: Math.min(520, Screen.width * 0.6)
-            height: 380
-            radius: 12
-            color: Theme.isDark() ? "#1E1D22" : "#FBFAFF"
-            border.color: Qt.rgba(255, 255, 255, 0.15)
-            border.width: 1
+        MouseArea {
+            anchors.fill: parent
+            hoverEnabled: true
+            cursorShape: Qt.PointingHandCursor
+            onClicked: root.nextMember()
+        }
+    }
 
-            ColumnLayout {
-                anchors.fill: parent
-                anchors.margins: 16
-                spacing: 10
+    // 成员设置对话框：用 Dialog（主程序窗口管理，天然屏幕居中，
+    // 不受堆叠组件自身位置影响；内容按钮自绘，不依赖 RinUI 遮蔽类型）
+    Dialog {
+        id: memberSettingsDialog
+        objectName: "memberSettingsDialog"
+        title: qsTr("Member Settings")
+        modal: true
+        width: Math.min(520, Screen.width * 0.6)
+        height: 420
+        property string currentMemberId: ""
 
-                Text {
-                    text: qsTr("Member Settings")
-                    font.pixelSize: 15
-                    font.weight: Font.DemiBold
-                    color: Theme.isDark() ? "#fff" : "#1a1a1a"
+        ColumnLayout {
+            anchors.fill: parent
+            anchors.margins: 16
+            spacing: 10
+
+            Flickable {
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentHeight: settingsLoader.height
+                clip: true
+
+                Loader {
+                    id: settingsLoader
+                    width: parent.width
                 }
+            }
 
-                Flickable {
-                    Layout.fillWidth: true
-                    Layout.fillHeight: true
-                    contentHeight: settingsLoader.height
-                    clip: true
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: 8
 
-                    Loader {
-                        id: settingsLoader
-                        width: parent.width
+                // 取消（自绘按钮）
+                Rectangle {
+                    width: 76
+                    height: 32
+                    radius: 8
+                    color: cancelHovered
+                        ? Qt.rgba(255, 255, 255, 0.12)
+                        : "transparent"
+                    border.color: Qt.rgba(255, 255, 255, 0.2)
+                    border.width: 1
+                    property bool cancelHovered: false
+
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("Cancel")
+                        font.pixelSize: 13
+                        color: Theme.isDark() ? "#ddd" : "#333"
+                    }
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: parent.cancelHovered = true
+                        onExited: parent.cancelHovered = false
+                        onClicked: memberSettingsDialog.close()
                     }
                 }
 
-                RowLayout {
-                    Layout.alignment: Qt.AlignRight
-                    spacing: 8
+                // 保存（自绘按钮）
+                Rectangle {
+                    width: 76
+                    height: 32
+                    radius: 8
+                    color: saveHovered
+                        ? Qt.rgba(0, 120, 212, 0.9)
+                        : "#0078D4"
+                    property bool saveHovered: false
 
-                    // 取消（自绘按钮）
-                    Rectangle {
-                        width: 76
-                        height: 32
-                        radius: 8
-                        color: cancelHovered
-                            ? Qt.rgba(255, 255, 255, 0.12)
-                            : "transparent"
-                        border.color: Qt.rgba(255, 255, 255, 0.2)
-                        border.width: 1
-                        property bool cancelHovered: false
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: qsTr("Cancel")
-                            font.pixelSize: 13
-                            color: Theme.isDark() ? "#ddd" : "#333"
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onEntered: parent.cancelHovered = true
-                            onExited: parent.cancelHovered = false
-                            onClicked: memberSettingsDialog.visible = false
-                        }
+                    Text {
+                        anchors.centerIn: parent
+                        text: qsTr("Save")
+                        font.pixelSize: 13
+                        color: "#fff"
                     }
-
-                    // 保存（自绘按钮）
-                    Rectangle {
-                        width: 76
-                        height: 32
-                        radius: 8
-                        color: saveHovered
-                            ? Qt.rgba(0, 120, 212, 0.9)
-                            : "#0078D4"
-                        property bool saveHovered: false
-
-                        Text {
-                            anchors.centerIn: parent
-                            text: qsTr("Save")
-                            font.pixelSize: 13
-                            color: "#fff"
-                        }
-                        MouseArea {
-                            anchors.fill: parent
-                            hoverEnabled: true
-                            onEntered: parent.saveHovered = true
-                            onExited: parent.saveHovered = false
-                            onClicked: {
-                                if (settingsLoader.item && settingsLoader.item.settings
-                                        && root.backend) {
-                                    root.backend.saveMemberSettings(
-                                        memberSettingsDialog.currentMemberId,
-                                        settingsLoader.item.settings)
-                                    root.applyMemberSettings(
-                                        memberSettingsDialog.currentMemberId)
-                                }
-                                memberSettingsDialog.visible = false
+                    MouseArea {
+                        anchors.fill: parent
+                        hoverEnabled: true
+                        onEntered: parent.saveHovered = true
+                        onExited: parent.saveHovered = false
+                        onClicked: {
+                            if (settingsLoader.item && settingsLoader.item.settings
+                                    && root.backend) {
+                                root.backend.saveMemberSettings(
+                                    memberSettingsDialog.currentMemberId,
+                                    settingsLoader.item.settings)
+                                root.applyMemberSettings(
+                                    memberSettingsDialog.currentMemberId)
                             }
+                            memberSettingsDialog.close()
                         }
                     }
                 }
