@@ -31,7 +31,6 @@ Item {
     property var defs: WidgetsModel ? WidgetsModel.definitionsList : []
     property int maxW: 0
     property int maxH: 0
-    property var memberHeights: []
     property int listSpacing: 10
 
     // 右侧切换条占位宽度（仅显示切换条时预留，保证不超出组件边界被裁剪）
@@ -73,31 +72,19 @@ Item {
     function refresh() {
         var list = backend.getMembers()
         root.members = list
-        // 重建高度缓存：成员删除后 Repeater delegate 会被复用（onLoaded 不再触发），
-        // 直接从现有 delegate 读取高度，避免 listY 全部归零导致成员叠放
-        root.memberHeights = []
-        for (var k = 0; k < memberRepeater.count; k++) {
-            var obj = memberRepeater.itemAt(k)
-            root.memberHeights[k] = (obj && obj.item) ? obj.item.height : 0
-        }
         if (root.activeIndex >= list.length) root.activeIndex = 0
     }
 
-    // 列表模式下第 i 个成员的 y（前面成员高度累计 + 间距）
+    // 列表模式下第 i 个成员的 y：固定行高（maxH + 间距），不依赖高度缓存，
+    // 成员增删后 delegate 重载/加载期间也不会归零导致成员叠放
     function listY(i) {
-        var y = 0
-        for (var k = 0; k < i; k++) {
-            y += (root.memberHeights[k] || 0) + root.listSpacing
-        }
-        return y
+        return i * (root.maxH + root.listSpacing)
     }
 
     function listTotalH() {
-        var h = 0
-        for (var k = 0; k < root.memberHeights.length; k++) {
-            h += (root.memberHeights[k] || 0)
-        }
-        return h + root.listSpacing * Math.max(0, root.memberHeights.length - 1)
+        var n = root.members.length
+        if (n <= 0) return 0
+        return n * root.maxH + root.listSpacing * (n - 1)
     }
 
     // 成员设置的最终值 = 默认设置 + 个性化设置覆盖（保证未保存过的字段
@@ -238,11 +225,10 @@ Item {
                         item.settings = root.mergedMemberSettings(memberId)
                     }
                 }
-                // 记录成员尺寸（容器随之固定；列表模式用于纵列排布）
+                // 记录成员尺寸（容器随之固定；列表模式用固定行高排布）
                 if (item) {
                     root.maxW = Math.max(root.maxW, item.implicitWidth)
                     root.maxH = Math.max(root.maxH, item.height)
-                    root.memberHeights[index] = item.height
                 }
             }
 
