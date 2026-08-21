@@ -215,20 +215,26 @@ _WLOADER_OPS = [
 
 # ── 对外接口 ────────────────────────────────────────────────
 
-def install(logger):
-    """安装主程序集成补丁（幂等）。主程序路径不可用时静默跳过。
+def install(logger, root=None):
+    """安装主程序集成补丁（幂等）。root 显式传入主程序目录；否则自动探测。
 
     补丁 = 修改 WidgetsContainer.qml + WidgetLoader.qml，并把
     AddOverlayMemberDialog.qml 复制到主程序（官方版没有该文件）。
     """
-    root = find_app_root()
+    if root is None:
+        root = find_app_root()
     if root is None:
         logger.warning("[overlay] 未找到主程序目录，跳过主程序集成")
         return False
+    root = Path(root)
     container = root / _CONTAINER_REL
     wloader = root / _WLOADER_REL
     dialog = root / _DIALOG_REL
     backup_dir = root / _BACKUP_ROOT / _BACKUP_SUB
+
+    if not container.is_file() or not wloader.is_file():
+        logger.error(f"[overlay] 目录不是有效的 ClassWidgets 主程序: {root}")
+        return False
 
     c_text = container.read_text(encoding="utf-8", errors="replace")
     w_text = wloader.read_text(encoding="utf-8", errors="replace")
@@ -283,11 +289,13 @@ def _record_dialog_backup(backup_dir, dialog, existed):
             "official ClassWidgets has no AddOverlayMemberDialog.qml\n", encoding="utf-8")
 
 
-def restore(logger):
+def restore(logger, root=None):
     """从备份还原主程序文件（幂等）。无备份时不做任何事。"""
-    root = find_app_root()
+    if root is None:
+        root = find_app_root()
     if root is None:
         return False
+    root = Path(root)
     backup_dir = root / _BACKUP_ROOT / _BACKUP_SUB
     if not backup_dir.is_dir():
         return False
