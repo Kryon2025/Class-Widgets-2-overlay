@@ -1,7 +1,7 @@
 {
   "id": "com.overlay",
   "name": "堆叠组件",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "api_version": "~=0.6.0",
   "entry": "main.py",
   "author": "松峰",
