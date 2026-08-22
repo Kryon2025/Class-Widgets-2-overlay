@@ -36,10 +36,13 @@ Item {
     // 右侧切换条占位宽度（仅显示切换条时预留，保证不超出组件边界被裁剪）
     property int switchBarSpace: root.showSwitchBar && root.members.length > 0 ? 48 : 0
 
+    // 迷你模式（主程序全局配置）：容器与切换条高度跟随，与其它组件保持一致
+    readonly property bool miniMode: Configs.data.preferences.mini_mode
+
     implicitWidth: Math.max(96, root.maxW + root.switchBarSpace)
     implicitHeight: root.overlayListMode
         ? Math.max(80, root.listTotalH())
-        : Math.max(80, root.maxH)
+        : (root.miniMode ? 56 : Math.max(80, root.maxH))
 
     // 轮播间隔由组件设置 interval_ms 控制（列表模式 / 编辑模式暂停）
     property int carouselInterval: settings && settings.interval_ms ? settings.interval_ms : 5000
@@ -232,6 +235,23 @@ Item {
                 }
             }
 
+            // 成员尺寸实际变化（迷你模式切换等）：延迟到绑定传播完成后
+            // 全量重测，避免同步重测读到旧高度导致容器偏小裁切成员
+            onHeightChanged: {
+                if (!item) return
+                Qt.callLater(function() {
+                    root.maxW = 0
+                    root.maxH = 0
+                    for (var k = 0; k < memberRepeater.count; k++) {
+                        var obj = memberRepeater.itemAt(k)
+                        if (obj && obj.item) {
+                            root.maxW = Math.max(root.maxW, obj.item.implicitWidth)
+                            root.maxH = Math.max(root.maxH, obj.item.height)
+                        }
+                    }
+                })
+            }
+
             onStatusChanged: {
                 if (status === Loader.Error && source !== "") {
                     console.error("[overlay] 成员组件加载失败:", memberId, source)
@@ -248,7 +268,8 @@ Item {
         visible: root.showSwitchBar && root.members.length > 0 && !root.overlayListMode
         z: 5
         width: 36
-        height: Math.min(120, Math.max(40, root.maxH))
+        // 高度跟随容器（迷你模式下容器 56px，切换条同步变矮，保证与其它组件一致）
+        height: Math.min(120, Math.max(40, root.height))
         radius: 12
         // 固定在组件内部右侧（组件宽度已为其预留空间，不被外层裁剪）
         x: root.width - 48
