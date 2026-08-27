@@ -240,15 +240,18 @@ Item {
             onHeightChanged: {
                 if (!item) return
                 Qt.callLater(function() {
-                    root.maxW = 0
-                    root.maxH = 0
+                    var w = 0
+                    var h = 0
                     for (var k = 0; k < memberRepeater.count; k++) {
                         var obj = memberRepeater.itemAt(k)
                         if (obj && obj.item) {
-                            root.maxW = Math.max(root.maxW, obj.item.implicitWidth)
-                            root.maxH = Math.max(root.maxH, obj.item.height)
+                            w = Math.max(w, obj.item.implicitWidth)
+                            h = Math.max(h, obj.item.height)
                         }
                     }
+                    // 只增不减：堆叠锁定到最大成员尺寸，轮播时容器不再忽大忽小
+                    if (w > root.maxW) root.maxW = w
+                    if (h > root.maxH) root.maxH = h
                 })
             }
 
