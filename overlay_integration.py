@@ -81,85 +81,85 @@ _CONTAINER_OPS = [
     // 堆叠插件集成：编辑其内部成员（成员纵向排列 + 下方编辑行）
     property bool overlayEditMode: false"""),
     # 3) 右键菜单：Delete 项前插入"编辑成员组件"（仅堆叠组件显示）
-    ("""                MenuItem {
-                    icon.name: "ic_fluent_delete_20_regular"
-                    text: qsTr("Delete")""",
-     """                MenuItem {
-                    // 堆叠插件集成：编辑其内部成员
-                    visible: model.typeId === "com.overlay"
-                    icon.name: "ic_fluent_layers_20_regular"
-                    text: qsTr("编辑成员组件")
-                    onTriggered: {
-                        widgetMenu.close()
-                        widgetsContainer.editMode = true
-                        widgetsContainer.overlayEditMode = true
+    ("""                    MenuItem {
+                        icon.name: "ic_fluent_delete_20_regular"
+                        text: qsTr("Delete")""",
+     """                    MenuItem {
+                        // 堆叠插件集成：编辑其内部成员
+                        visible: model.typeId === "com.overlay"
+                        icon.name: "ic_fluent_layers_20_regular"
+                        text: qsTr("编辑成员组件")
+                        onTriggered: {
+                            widgetMenu.close()
+                            widgetsContainer.editMode = true
+                            widgetsContainer.overlayEditMode = true
+                        }
                     }
-                }
-                MenuItem {
-                    icon.name: "ic_fluent_delete_20_regular"
-                    text: qsTr("Delete")"""),
+                    MenuItem {
+                        icon.name: "ic_fluent_delete_20_regular"
+                        text: qsTr("Delete")"""),
     # 3) delegate 尺寸：编辑堆叠时独占一行，下方预留编辑行
-    ("""            property real visualScale: scaleFactor
-            width: loader.width * visualScale
-            height: loader.height * visualScale""",
-     """            // 堆叠插件集成：编辑时独占一行（大组件），下方展开编辑行
-            property bool isOverlay: model.typeId === "com.overlay"
-            property bool overlayEditing: widgetsContainer.overlayEditMode && isOverlay
-            property real visualScale: scaleFactor
-            width: overlayEditing
-                ? Math.max((widgetsContainer.parent ? widgetsContainer.parent.width - 16 : 0),
-                           loader.width * visualScale)
-                : loader.width * visualScale
-            height: loader.height * visualScale
-                + (overlayEditing ? editRow.height + 10 : 0)"""),
+    ("""                property real visualScale: scaleFactor
+                width: loader.width * visualScale
+                height: loader.height * visualScale""",
+     """                // 堆叠插件集成：编辑时独占一行（大组件），下方展开编辑行
+                property bool isOverlay: model.typeId === "com.overlay"
+                property bool overlayEditing: widgetsContainer.overlayEditMode && isOverlay
+                property real visualScale: scaleFactor
+                width: overlayEditing
+                    ? Math.max((widgetsContainer.parent ? widgetsContainer.parent.width - 16 : 0),
+                               loader.width * visualScale)
+                    : loader.width * visualScale
+                height: loader.height * visualScale
+                    + (overlayEditing ? editRow.height + 10 : 0)"""),
     # 4) 编辑行：组件正下方（deleteBtn 前）
-    ("""            ToolButton {
-                id: deleteBtn""",
-     """            // 堆叠插件集成：成员编辑行（Add Member / Done）
-            RowLayout {
-                id: editRow
-                objectName: "editRow"
-                visible: widgetContainer.overlayEditing
-                anchors.top: loader.bottom
-                anchors.topMargin: 10
-                anchors.horizontalCenter: parent.horizontalCenter
-                width: implicitWidth
-                height: implicitHeight
-                spacing: 8
+    ("""                ToolButton {
+                    id: deleteBtn""",
+     """                // 堆叠插件集成：成员编辑行（Add Member / Done）
+                RowLayout {
+                    id: editRow
+                    objectName: "editRow"
+                    visible: widgetContainer.overlayEditing
+                    anchors.top: loader.bottom
+                    anchors.topMargin: 10
+                    anchors.horizontalCenter: parent.horizontalCenter
+                    width: implicitWidth
+                    height: implicitHeight
+                    spacing: 8
 
-                Button {
-                    id: addOverlayMemberButton
-                    icon.name: "ic_fluent_add_20_regular"
-                    text: qsTr("Add Member")
-                    onClicked: addOverlayMemberDialog.open()
-                }
+                    Button {
+                        id: addOverlayMemberButton
+                        icon.name: "ic_fluent_add_20_regular"
+                        text: qsTr("Add Member")
+                        onClicked: addOverlayMemberDialog.open()
+                    }
 
-                Button {
-                    id: acceptOverlayButton
-                    highlighted: true
-                    icon.name: "ic_fluent_checkmark_20_regular"
-                    text: qsTr("Done")
-                    onClicked: {
-                        widgetsContainer.overlayEditMode = false
+                    Button {
+                        id: acceptOverlayButton
+                        highlighted: true
+                        icon.name: "ic_fluent_checkmark_20_regular"
+                        text: qsTr("Done")
+                        onClicked: {
+                            widgetsContainer.overlayEditMode = false
+                        }
                     }
                 }
-            }
 
-            ToolButton {
-                id: deleteBtn"""),
+                ToolButton {
+                    id: deleteBtn"""),
     # 5) 编辑堆叠时停止摇晃动画
     ("            rotation: editMode",
      "            rotation: editMode && !widgetsContainer.overlayEditMode"),
     ("                running: editMode",
      "                running: editMode && !widgetsContainer.overlayEditMode"),
     # 6) 编辑堆叠时禁用成员右键菜单（成员右键由 overlay 内部处理）
-    ("""            // 鼠标右键打开设置
-            TapHandler {
-                acceptedButtons: Qt.RightButton""",
-     """            // 鼠标右键打开设置（编辑堆叠时禁用，成员右键由 overlay 内部处理）
-            TapHandler {
-                acceptedButtons: Qt.RightButton
-                enabled: !widgetsContainer.overlayEditMode"""),
+    ("""                // 鼠标右键打开设置
+                TapHandler {
+                    acceptedButtons: Qt.RightButton""",
+     """                // 鼠标右键打开设置（编辑堆叠时禁用，成员右键由 overlay 内部处理）
+                TapHandler {
+                    acceptedButtons: Qt.RightButton
+                    enabled: !widgetsContainer.overlayEditMode"""),
     # 7) 官方"完成"按钮同时退出堆叠编辑态
     ("onClicked: widgetsContainer.editMode = false",
      "onClicked: { widgetsContainer.editMode = false; widgetsContainer.overlayEditMode = false }"),

@@ -166,8 +166,12 @@ Item {
 
         Loader {
             id: memberLoader
+            // 异步加载：Python 主程序 URL 拦截器已移除，加载线程不再需要 GIL，
+            // 不会死锁；异步避免加载多个成员时主线程卡顿。
             asynchronous: true
             z: index === root.activeIndex ? 1 : 0
+            // 成员宽度拉伸到堆叠内容区宽度：窄成员与最大成员同宽，避免留白
+            width: root.overlayListMode ? parent.width : Math.max(96, root.maxW)
             // 轮播模式在内容区（排除右侧切换条）居中；列表模式纵列
             x: root.overlayListMode ? 0 : (Math.max(0, parent.width - root.switchBarSpace - width)) / 2
             y: root.overlayListMode ? root.listY(index) : (parent.height - height) / 2
@@ -240,15 +244,18 @@ Item {
             onHeightChanged: {
                 if (!item) return
                 Qt.callLater(function() {
-                    root.maxW = 0
-                    root.maxH = 0
+                    var w = 0
+                    var h = 0
                     for (var k = 0; k < memberRepeater.count; k++) {
                         var obj = memberRepeater.itemAt(k)
                         if (obj && obj.item) {
-                            root.maxW = Math.max(root.maxW, obj.item.implicitWidth)
-                            root.maxH = Math.max(root.maxH, obj.item.height)
+                            w = Math.max(w, obj.item.implicitWidth)
+                            h = Math.max(h, obj.item.height)
                         }
                     }
+                    // 只增不减：堆叠锁定到最大成员尺寸，轮播时容器不再忽大忽小
+                    if (w > root.maxW) root.maxW = w
+                    if (h > root.maxH) root.maxH = h
                 })
             }
 
