@@ -65,6 +65,69 @@ SettingsLayout {
 
     SettingCard {
         Layout.fillWidth: true
+        title: "上课期间隐藏切换条"
+        description: "设定时间段内自动隐藏右侧“切换”按钮（下课自动恢复），适合上课防打扰。"
+
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: 8
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    Layout.fillWidth: true
+                    text: "启用"
+                    color: Theme.isDark() ? "#DDDDDD" : "#333333"
+                }
+                Switch {
+                    checked: settings.class_hide_enabled === true
+                    onCheckedChanged: settings.class_hide_enabled = checked
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    Layout.preferredWidth: 64
+                    text: "周几"
+                    color: Theme.isDark() ? "#DDDDDD" : "#333333"
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    text: settings.class_hide_days || "1,2,3,4,5"
+                    placeholderText: "1-7 周一到周日，逗号分隔"
+                    onEditingFinished: settings.class_hide_days = text.trim()
+                }
+            }
+
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: 8
+                Text {
+                    Layout.preferredWidth: 64
+                    text: "时间段"
+                    color: Theme.isDark() ? "#DDDDDD" : "#333333"
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    text: settings.class_hide_start || "08:00"
+                    placeholderText: "开始 如 08:00"
+                    onEditingFinished: settings.class_hide_start = text.trim()
+                }
+                TextField {
+                    Layout.fillWidth: true
+                    text: settings.class_hide_end || "18:00"
+                    placeholderText: "结束 如 18:00"
+                    onEditingFinished: settings.class_hide_end = text.trim()
+                }
+            }
+        }
+    }
+
+    SettingCard {
+        Layout.fillWidth: true
         title: "成员组件"
         description: "已叠加到本组件内的成员，可在桌面组件编辑界面中右键“编辑重叠组件”添加/移除。"
 

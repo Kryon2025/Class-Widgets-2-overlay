@@ -60,12 +60,24 @@ def _write(path, text, crlf):
 
 
 def _apply(text, ops, tag):
-    """顺序执行替换；锚点必须唯一，否则抛异常（由调用方回滚）。"""
+    """顺序执行替换；锚点必须唯一，否则抛异常（由调用方回滚）。
+
+    old 可以是字符串或候选列表（兼容不同版本主程序 QML 的缩进/结构差异，
+    命中任一即替换；新代码缩进固定，QML 缩进不敏感，功能不受影响）。
+    """
     for old, new in ops:
-        n = text.count(old)
-        if n != 1:
-            raise RuntimeError(f"{tag}: 锚点匹配 {n} 次（应为 1）: {old[:60]!r}")
-        text = text.replace(old, new, 1)
+        candidates = old if isinstance(old, (list, tuple)) else [old]
+        hit = None
+        for cand in candidates:
+            n = text.count(cand)
+            if n > 1:
+                raise RuntimeError(f"{tag}: 锚点重复 ({n}): {cand[:60]!r}")
+            if n == 1:
+                hit = cand
+        if hit is None:
+            raise RuntimeError(
+                f"{tag}: 锚点未找到: {candidates[0][:60]!r}（主程序版本不兼容）")
+        text = text.replace(hit, new, 1)
     return text
 
 
@@ -81,9 +93,14 @@ _CONTAINER_OPS = [
     // 堆叠插件集成：编辑其内部成员（成员纵向排列 + 下方编辑行）
     property bool overlayEditMode: false"""),
     # 3) 右键菜单：Delete 项前插入"编辑成员组件"（仅堆叠组件显示）
-    ("""                MenuItem {
+    ([
+        """                MenuItem {
                     icon.name: "ic_fluent_delete_20_regular"
                     text: qsTr("Delete")""",
+        """                    MenuItem {
+                        icon.name: "ic_fluent_delete_20_regular"
+                        text: qsTr("Delete")""",
+     ],
      """                MenuItem {
                     // 堆叠插件集成：编辑其内部成员
                     visible: model.typeId === "com.overlay"
@@ -99,9 +116,14 @@ _CONTAINER_OPS = [
                     icon.name: "ic_fluent_delete_20_regular"
                     text: qsTr("Delete")"""),
     # 3) delegate 尺寸：编辑堆叠时独占一行，下方预留编辑行
-    ("""            property real visualScale: scaleFactor
+    ([
+        """            property real visualScale: scaleFactor
             width: loader.width * visualScale
             height: loader.height * visualScale""",
+        """                property real visualScale: scaleFactor
+                width: loader.width * visualScale
+                height: loader.height * visualScale""",
+     ],
      """            // 堆叠插件集成：编辑时独占一行（大组件），下方展开编辑行
             property bool isOverlay: model.typeId === "com.overlay"
             property bool overlayEditing: widgetsContainer.overlayEditMode && isOverlay
@@ -113,8 +135,12 @@ _CONTAINER_OPS = [
             height: loader.height * visualScale
                 + (overlayEditing ? editRow.height + 10 : 0)"""),
     # 4) 编辑行：组件正下方（deleteBtn 前）
-    ("""            ToolButton {
+    ([
+        """            ToolButton {
                 id: deleteBtn""",
+        """                ToolButton {
+                    id: deleteBtn""",
+     ],
      """            // 堆叠插件集成：成员编辑行（Add Member / Done）
             RowLayout {
                 id: editRow
@@ -153,9 +179,14 @@ _CONTAINER_OPS = [
     ("                running: editMode",
      "                running: editMode && !widgetsContainer.overlayEditMode"),
     # 6) 编辑堆叠时禁用成员右键菜单（成员右键由 overlay 内部处理）
-    ("""            // 鼠标右键打开设置
+    ([
+        """            // 鼠标右键打开设置
             TapHandler {
                 acceptedButtons: Qt.RightButton""",
+        """                // 鼠标右键打开设置
+                TapHandler {
+                    acceptedButtons: Qt.RightButton""",
+     ],
      """            // 鼠标右键打开设置（编辑堆叠时禁用，成员右键由 overlay 内部处理）
             TapHandler {
                 acceptedButtons: Qt.RightButton

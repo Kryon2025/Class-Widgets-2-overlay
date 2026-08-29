@@ -26,6 +26,48 @@ Item {
         if (backend) refresh()
     }
 
+    // ── 上课期间隐藏切换条 ──────────────────────────────
+    // 配置来自组件设置页（class_hide_*），纯 QML 判断：周几 + 时间段内返回 true
+    property bool classHideEnabled: settings.class_hide_enabled === true
+    property string classHideDays: settings.class_hide_days || ""
+    property string classHideStart: settings.class_hide_start || ""
+    property string classHideEnd: settings.class_hide_end || ""
+    property bool inClass: false
+
+    function parseTimeStr(t) {
+        var m = /^(\d{1,2}):(\d{2})$/.exec(String(t || "").trim())
+        if (!m) return -1
+        return parseInt(m[1], 10) * 60 + parseInt(m[2], 10)
+    }
+
+    function computeInClass() {
+        if (!root.classHideEnabled) return false
+        var now = new Date()
+        var wd = now.getDay()
+        var day = wd === 0 ? 7 : wd  // 1=周一 … 7=周日
+        if (root.classHideDays.indexOf(String(day)) < 0) return false
+        var s = root.parseTimeStr(root.classHideStart)
+        var e = root.parseTimeStr(root.classHideEnd)
+        if (s < 0 || e < 0 || s >= e) return false
+        var cur = now.getHours() * 60 + now.getMinutes()
+        return cur >= s && cur < e
+    }
+
+    function updateClassState() { root.inClass = root.computeInClass() }
+
+    onClassHideEnabledChanged: root.updateClassState()
+    onClassHideDaysChanged: root.updateClassState()
+    onClassHideStartChanged: root.updateClassState()
+    onClassHideEndChanged: root.updateClassState()
+
+    // 上课开始/结束瞬间生效：每分钟重算一次
+    Timer {
+        interval: 60000
+        running: root.classHideEnabled
+        repeat: true
+        onTriggered: root.updateClassState()
+    }
+
     property var members: []
     property int activeIndex: 0
     property var defs: WidgetsModel ? WidgetsModel.definitionsList : []
@@ -144,6 +186,7 @@ Item {
 
     Component.onCompleted: {
         if (backend) refresh()
+        root.updateClassState()
     }
 
     // 空状态提示（无成员时）
@@ -265,12 +308,26 @@ Item {
     Rectangle {
         id: switchBar
         objectName: "switchBar"
-        visible: root.showSwitchBar && root.members.length > 0 && !root.overlayListMode
+        // 显示条件（true/false）；显隐通过 opacity 渐变动画过渡，避免生硬
+        readonly property bool barVisible: root.showSwitchBar && root.members.length > 0
+            && !root.overlayListMode
+            // 小组件隐藏（主程序交互设置）或上课时段内，切换条同步隐藏
+            && !Configs.data.interactions.hide.state && !root.inClass
+        // 淡出动画结束后再真正隐藏（opacity 为 0 时不可见、不渲染交互）
+        visible: opacity > 0.01
+        opacity: barVisible ? 1 : 0
+        Behavior on opacity {
+            NumberAnimation { duration: 220; easing.type: Easing.OutCubic }
+        }
         z: 5
         width: 36
         // 高度跟随容器（迷你模式下容器 56px，切换条同步变矮，保证与其它组件一致）
         height: Math.min(120, Math.max(40, root.height))
-        radius: 12
+        // 圆角跟随主程序"小组件外观"设置（Corner Radius）；
+        // 迷你模式等窄高场景自动收小，避免圆角超过短边
+        radius: Math.min(width, height, Configs.data.preferences.widget_corner_radius)
+        // 背景不透明度跟随主程序小组件外观设置
+        opacity: Configs.data.preferences.opacity
         // 固定在组件内部右侧（组件宽度已为其预留空间，不被外层裁剪）
         x: root.width - 48
         y: (root.height - height) / 2
@@ -291,6 +348,8 @@ Item {
             anchors.fill: parent
             hoverEnabled: true
             cursorShape: Qt.PointingHandCursor
+            // 淡出期间（opacity 动画中）禁止点击，避免误触
+            enabled: switchBar.barVisible
             onClicked: root.nextMember()
         }
     }
