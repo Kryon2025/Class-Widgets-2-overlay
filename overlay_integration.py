@@ -66,6 +66,9 @@ def _apply(text, ops, tag):
     命中任一即替换；新代码缩进固定，QML 缩进不敏感，功能不受影响）。
     """
     for old, new in ops:
+        # 幂等：该 op 的替换结果已存在（已应用）则跳过，支持增量补装新 op
+        if new in text:
+            continue
         candidates = old if isinstance(old, (list, tuple)) else [old]
         hit = None
         for cand in candidates:
@@ -219,6 +222,23 @@ _CONTAINER_OPS = [
     ("""        visible: widgetsContainer.editMode || widgetRepeater.count === 0""",
      """        visible: (widgetsContainer.editMode || widgetRepeater.count === 0)
             && !widgetsContainer.overlayEditMode"""),
+    # 11) 设置页注入 backendObj：插件设置页可直接访问插件后端
+    #     （上课隐藏等配置需 backend 自持久化，settings 注入时机不可靠）
+    ([
+        """                                settingsDialog.setSource(model.settingsQml, {
+                                    "settings": model.settings,
+                                    "instanceId": model.instanceId
+                                })""",
+        """                            settingsDialog.setSource(model.settingsQml, {
+                                "settings": model.settings,
+                                "instanceId": model.instanceId
+                            })""",
+     ],
+     """                                settingsDialog.setSource(model.settingsQml, {
+                                    "settings": model.settings,
+                                    "instanceId": model.instanceId,
+                                    "backendObj": model.backendObj
+                                })"""),
 ]
 
 _WLOADER_OPS = [
@@ -281,8 +301,10 @@ def install(logger, root=None):
     c_text = container.read_text(encoding="utf-8", errors="replace")
     w_text = wloader.read_text(encoding="utf-8", errors="replace")
     dialog_existed = dialog.is_file()
-    if _MARKER in c_text or _MARKER in w_text:
-        # 已打补丁：确保备份存在 + 对话框文件补齐（主程序更新可能删了它）
+    already_patched = _MARKER in c_text or _MARKER in w_text
+    if already_patched:
+        # 已打补丁：确保备份存在 + 对话框文件补齐（主程序更新可能删了它），
+        # 再走 _apply（op 级幂等，自动补装新增 op）
         if not (backup_dir / "WidgetsContainer.qml.orig").exists():
             backup_dir.mkdir(parents=True, exist_ok=True)
             (backup_dir / "WidgetsContainer.qml.orig").write_bytes(container.read_bytes())
@@ -292,14 +314,12 @@ def install(logger, root=None):
             dialog.parent.mkdir(parents=True, exist_ok=True)
             shutil.copy2(_DIALOG_SRC, dialog)
             logger.info("[overlay] 已补全成员选择对话框文件")
-        logger.info("[overlay] 主程序集成已就绪")
-        return True
-
-    # 备份官方原版
-    backup_dir.mkdir(parents=True, exist_ok=True)
-    (backup_dir / "WidgetsContainer.qml.orig").write_bytes(container.read_bytes())
-    (backup_dir / "WidgetLoader.qml.orig").write_bytes(wloader.read_bytes())
-    _record_dialog_backup(backup_dir, dialog, dialog_existed)
+    else:
+        # 备份官方原版
+        backup_dir.mkdir(parents=True, exist_ok=True)
+        (backup_dir / "WidgetsContainer.qml.orig").write_bytes(container.read_bytes())
+        (backup_dir / "WidgetLoader.qml.orig").write_bytes(wloader.read_bytes())
+        _record_dialog_backup(backup_dir, dialog, dialog_existed)
 
     # 注入；任一环节失败则整体回滚
     try:

@@ -15,12 +15,16 @@ SettingsLayout {
         secValue = (settings.interval_ms || 5000) / 1000
     }
 
-    // 从主程序组件定义中取重叠插件后端（设置页加载时无直接 backend 上下文）
+    // 插件后端：优先用主程序补丁注入的 backendObj（WidgetsContainer 打开设置时注入），
+    // 兜底再从组件定义列表中查找
+    property var backendObj: null
     property var overlayBackend: {
+        if (backendObj) return backendObj
         if (typeof WidgetsModel !== "undefined" && WidgetsModel.definitionsList) {
             var defs = WidgetsModel.definitionsList
             for (var i = 0; i < defs.length; i++) {
-                if (defs[i].id === "com.overlay") return defs[i].backend_obj
+                if (defs[i].typeId === "com.overlay") return defs[i].backendObj || defs[i].backend_obj
+                if (defs[i].id === "com.overlay") return defs[i].backendObj || defs[i].backend_obj
             }
         }
         return null
@@ -60,85 +64,6 @@ SettingsLayout {
         Switch {
             checked: settings.show_switch_bar !== false
             onCheckedChanged: settings.show_switch_bar = checked
-        }
-    }
-
-    SettingCard {
-        Layout.fillWidth: true
-        title: "上课期间隐藏切换条"
-        description: "设定时间段内自动隐藏右侧“切换”按钮（下课自动恢复），适合上课防打扰。"
-
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: 8
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.fillWidth: true
-                    text: "启用"
-                    color: Theme.isDark() ? "#DDDDDD" : "#333333"
-                }
-                Switch {
-                    checked: overlayBackend ? overlayBackend.classHideEnabled : false
-                    onCheckedChanged: {
-                        if (!overlayBackend) return
-                        overlayBackend.setClassHide(checked, overlayBackend.classHideDays,
-                                                    overlayBackend.classHideStart, overlayBackend.classHideEnd)
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.preferredWidth: 64
-                    text: "周几"
-                    color: Theme.isDark() ? "#DDDDDD" : "#333333"
-                }
-                TextField {
-                    Layout.fillWidth: true
-                    text: overlayBackend ? overlayBackend.classHideDays : "1,2,3,4,5"
-                    placeholderText: "1-7 周一到周日，逗号分隔"
-                    onEditingFinished: {
-                        if (!overlayBackend) return
-                        overlayBackend.setClassHide(overlayBackend.classHideEnabled, text.trim(),
-                                                    overlayBackend.classHideStart, overlayBackend.classHideEnd)
-                    }
-                }
-            }
-
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 8
-                Text {
-                    Layout.preferredWidth: 64
-                    text: "时间段"
-                    color: Theme.isDark() ? "#DDDDDD" : "#333333"
-                }
-                TextField {
-                    Layout.fillWidth: true
-                    text: overlayBackend ? overlayBackend.classHideStart : "08:00"
-                    placeholderText: "开始 如 08:00"
-                    onEditingFinished: {
-                        if (!overlayBackend) return
-                        overlayBackend.setClassHide(overlayBackend.classHideEnabled, overlayBackend.classHideDays,
-                                                    text.trim(), overlayBackend.classHideEnd)
-                    }
-                }
-                TextField {
-                    Layout.fillWidth: true
-                    text: overlayBackend ? overlayBackend.classHideEnd : "18:00"
-                    placeholderText: "结束 如 18:00"
-                    onEditingFinished: {
-                        if (!overlayBackend) return
-                        overlayBackend.setClassHide(overlayBackend.classHideEnabled, overlayBackend.classHideDays,
-                                                    overlayBackend.classHideStart, text.trim())
-                    }
-                }
-            }
         }
     }
 

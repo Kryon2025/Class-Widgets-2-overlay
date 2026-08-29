@@ -33,7 +33,54 @@ Item {
     property string classHideDays: backend ? backend.classHideDays : ""
     property string classHideStart: backend ? backend.classHideStart : ""
     property string classHideEnd: backend ? backend.classHideEnd : ""
-    property bool inClass: false
+    // 自定义时段是否上课中（由 updateClassState 计算）
+    property bool classHideInClass: false
+    // 课表/灵动通知状态：主程序内置课表运行时 currentStatus === "class" 即上课中
+    // （灵动通知的上下课信息与它同源；绑定自动响应变化，上课/下课瞬间生效）
+    property bool scheduleInClass: typeof AppCentral !== "undefined"
+        && AppCentral.scheduleRuntime && AppCentral.scheduleRuntime.currentStatus === "class"
+    // 灵动通知内容触发：收到含"上课"的通知隐藏切换条，含"下课"的通知显示
+    property bool notificationInClass: false
+    property bool inClass: root.scheduleInClass || root.notificationInClass || root.classHideInClass
+
+    function containsClassStart(txt) {
+        return txt.indexOf("上课") >= 0 || txt.indexOf("开始上课") >= 0
+            || txt.indexOf("class starts") >= 0 || txt.indexOf("class begins") >= 0
+    }
+
+    function containsClassEnd(txt) {
+        return txt.indexOf("下课") >= 0 || txt.indexOf("放学") >= 0
+            || txt.indexOf("下课啦") >= 0 || txt.indexOf("课间") >= 0
+            || txt.indexOf("休息") >= 0
+            || txt.indexOf("class over") >= 0 || txt.indexOf("class ends") >= 0
+            || txt.indexOf("class dismissed") >= 0 || txt.indexOf("class finished") >= 0
+            || txt.indexOf("end of class") >= 0 || txt.indexOf("break") >= 0
+    }
+
+    // 监听灵动通知（与主程序 dynamicNotification.qml 同一信号源 AppCentral.notification）
+    Connections {
+        target: typeof AppCentral !== "undefined" && AppCentral.notification ? AppCentral.notification : null
+        function onNotified(payload) {
+            if (!payload) return
+            var txt = String(payload.title || "") + " " + String(payload.message || "")
+            if (root.containsClassStart(txt)) {
+                root.notificationInClass = true
+                notifRecoverTimer.restart()
+            } else if (root.containsClassEnd(txt)) {
+                root.notificationInClass = false
+                notifRecoverTimer.stop()
+            }
+        }
+    }
+
+    // 兜底：收到"上课"通知后若一节课时长（90 分钟）内没有新的上下课通知，
+    // 自动恢复显示切换条（防止下课通知文本不同/未触发导致永久隐藏）
+    Timer {
+        id: notifRecoverTimer
+        interval: 90 * 60 * 1000
+        repeat: false
+        onTriggered: root.notificationInClass = false
+    }
 
     function parseTimeStr(t) {
         var m = /^(\d{1,2}):(\d{2})$/.exec(String(t || "").trim())
@@ -54,7 +101,7 @@ Item {
         return cur >= s && cur < e
     }
 
-    function updateClassState() { root.inClass = root.computeInClass() }
+    function updateClassState() { root.classHideInClass = root.computeInClass() }
 
     onClassHideEnabledChanged: root.updateClassState()
     onClassHideDaysChanged: root.updateClassState()
