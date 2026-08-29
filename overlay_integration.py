@@ -208,6 +208,17 @@ _CONTAINER_OPS = [
     AddOverlayMemberDialog {
         id: addOverlayMemberDialog
     }"""),
+    # 9) 编辑堆叠成员时隐藏官方"完成"按钮（overlay 编辑行已有 Done，
+    #    两个完成按钮同时显示会造成干扰）
+    ("""            visible: widgetsContainer.editMode
+            id: acceptButton""",
+     """            visible: widgetsContainer.editMode && !widgetsContainer.overlayEditMode
+            id: acceptButton"""),
+    # 10) 编辑堆叠成员时隐藏官方"添加小组件&完成"整条工具栏
+    #     （官方 Add / Done 与 overlay 编辑行的 Add Member / Done 重复）
+    ("""        visible: widgetsContainer.editMode || widgetRepeater.count === 0""",
+     """        visible: (widgetsContainer.editMode || widgetRepeater.count === 0)
+            && !widgetsContainer.overlayEditMode"""),
 ]
 
 _WLOADER_OPS = [

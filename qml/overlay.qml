@@ -27,11 +27,12 @@ Item {
     }
 
     // ── 上课期间隐藏切换条 ──────────────────────────────
-    // 配置来自组件设置页（class_hide_*），纯 QML 判断：周几 + 时间段内返回 true
-    property bool classHideEnabled: settings.class_hide_enabled === true
-    property string classHideDays: settings.class_hide_days || ""
-    property string classHideStart: settings.class_hide_start || ""
-    property string classHideEnd: settings.class_hide_end || ""
+    // 配置由插件后端自持久化（backend.classHide*），组件加载/设置页保存后
+    // 通过 classHideChanged 信号刷新，不依赖主程序组件 settings 的保存时机
+    property bool classHideEnabled: backend && backend.classHideEnabled
+    property string classHideDays: backend ? backend.classHideDays : ""
+    property string classHideStart: backend ? backend.classHideStart : ""
+    property string classHideEnd: backend ? backend.classHideEnd : ""
     property bool inClass: false
 
     function parseTimeStr(t) {
@@ -60,12 +61,22 @@ Item {
     onClassHideStartChanged: root.updateClassState()
     onClassHideEndChanged: root.updateClassState()
 
-    // 上课开始/结束瞬间生效：每分钟重算一次
+    // 上课开始/结束瞬间生效：每分钟重算一次（running 始终开启，
+    // 不依赖组件 settings 绑定的刷新可靠性；设置页保存后也有信号立即重算）
     Timer {
-        interval: 60000
-        running: root.classHideEnabled
+        interval: 30000
+        running: true
         repeat: true
         onTriggered: root.updateClassState()
+    }
+
+    // 设置页保存"上课隐藏切换条"配置后立即重算（settings 注入时机不固定，
+    // 信号比绑定刷新可靠）
+    Connections {
+        target: backend
+        function onClassHideChanged() {
+            root.updateClassState()
+        }
     }
 
     property var members: []

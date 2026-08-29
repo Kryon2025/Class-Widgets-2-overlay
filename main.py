@@ -11,7 +11,7 @@ import os
 from pathlib import Path
 
 from loguru import logger
-from PySide6.QtCore import Signal, Slot
+from PySide6.QtCore import Property, Signal, Slot
 
 from ClassWidgets.SDK import CW2Plugin, PluginAPI
 from overlay_integration import install as _install_integration, restore as _restore_integration
@@ -24,6 +24,10 @@ class Plugin(CW2Plugin):
     """堆叠插件：成员组件管理 + 轮播配置。"""
 
     membersChanged = Signal()
+    # 设置页保存"上课隐藏切换条"配置后广播，组件 QML 立即重算上课状态
+    # 配置由本插件自持久化（.overlay_class_hide.json），不依赖主程序组件 settings
+    classHideChanged = Signal()
+    _class_hide = {"enabled": False, "days": "1,2,3,4,5", "start": "08:00", "end": "18:00"}
 
     def __init__(self, api: PluginAPI):
         super().__init__(api)
@@ -31,8 +35,59 @@ class Plugin(CW2Plugin):
         self._member_settings: dict = {}    # 成员 widget_id -> 该成员的组件设置
         self._members_file = Path(__file__).resolve().parent / ".overlay_members.json"
         self._settings_file = Path(__file__).resolve().parent / ".overlay_member_settings.json"
+        self._class_hide_file = Path(__file__).resolve().parent / ".overlay_class_hide.json"
         self._load_members()
         self._load_member_settings()
+        self._load_class_hide()
+
+    # ── 上课隐藏切换条 ─────────────────────────────────────────
+
+    def _load_class_hide(self) -> None:
+        try:
+            data = json.loads(self._class_hide_file.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for k in ("enabled", "days", "start", "end"):
+                    if k in data:
+                        self._class_hide[k] = data[k]
+        except Exception:
+            pass
+
+    def _save_class_hide(self) -> None:
+        try:
+            self._class_hide_file.write_text(
+                json.dumps(self._class_hide, ensure_ascii=False, indent=2), encoding="utf-8")
+        except Exception as e:
+            logger.warning(f"[overlay] 保存上课时段配置失败: {e}")
+
+    def _get_class_hide_enabled(self) -> bool:
+        return bool(self._class_hide.get("enabled"))
+
+    def _get_class_hide_days(self) -> str:
+        return str(self._class_hide.get("days") or "")
+
+    def _get_class_hide_start(self) -> str:
+        return str(self._class_hide.get("start") or "")
+
+    def _get_class_hide_end(self) -> str:
+        return str(self._class_hide.get("end") or "")
+
+    classHideEnabled = Property(bool, _get_class_hide_enabled, notify=classHideChanged)
+    classHideDays = Property(str, _get_class_hide_days, notify=classHideChanged)
+    classHideStart = Property(str, _get_class_hide_start, notify=classHideChanged)
+    classHideEnd = Property(str, _get_class_hide_end, notify=classHideChanged)
+
+    @Slot(bool, str, str, str)
+    def setClassHide(self, enabled: bool, days: str, start: str, end: str) -> None:
+        """保存上课隐藏切换条配置（插件自持久化）并广播刷新。"""
+        self._class_hide.update(enabled=bool(enabled), days=str(days or ""),
+                                start=str(start or ""), end=str(end or ""))
+        self._save_class_hide()
+        self.classHideChanged.emit()
+
+    @Slot()
+    def refreshClassHide(self) -> None:
+        """通知所有组件实例：立即按当前配置重算隐藏状态。"""
+        self.classHideChanged.emit()
 
     # ── 生命周期 ──────────────────────────────────────────────
 

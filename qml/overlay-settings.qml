@@ -81,8 +81,12 @@ SettingsLayout {
                     color: Theme.isDark() ? "#DDDDDD" : "#333333"
                 }
                 Switch {
-                    checked: settings.class_hide_enabled === true
-                    onCheckedChanged: settings.class_hide_enabled = checked
+                    checked: overlayBackend ? overlayBackend.classHideEnabled : false
+                    onCheckedChanged: {
+                        if (!overlayBackend) return
+                        overlayBackend.setClassHide(checked, overlayBackend.classHideDays,
+                                                    overlayBackend.classHideStart, overlayBackend.classHideEnd)
+                    }
                 }
             }
 
@@ -96,9 +100,13 @@ SettingsLayout {
                 }
                 TextField {
                     Layout.fillWidth: true
-                    text: settings.class_hide_days || "1,2,3,4,5"
+                    text: overlayBackend ? overlayBackend.classHideDays : "1,2,3,4,5"
                     placeholderText: "1-7 周一到周日，逗号分隔"
-                    onEditingFinished: settings.class_hide_days = text.trim()
+                    onEditingFinished: {
+                        if (!overlayBackend) return
+                        overlayBackend.setClassHide(overlayBackend.classHideEnabled, text.trim(),
+                                                    overlayBackend.classHideStart, overlayBackend.classHideEnd)
+                    }
                 }
             }
 
@@ -112,15 +120,23 @@ SettingsLayout {
                 }
                 TextField {
                     Layout.fillWidth: true
-                    text: settings.class_hide_start || "08:00"
+                    text: overlayBackend ? overlayBackend.classHideStart : "08:00"
                     placeholderText: "开始 如 08:00"
-                    onEditingFinished: settings.class_hide_start = text.trim()
+                    onEditingFinished: {
+                        if (!overlayBackend) return
+                        overlayBackend.setClassHide(overlayBackend.classHideEnabled, overlayBackend.classHideDays,
+                                                    text.trim(), overlayBackend.classHideEnd)
+                    }
                 }
                 TextField {
                     Layout.fillWidth: true
-                    text: settings.class_hide_end || "18:00"
+                    text: overlayBackend ? overlayBackend.classHideEnd : "18:00"
                     placeholderText: "结束 如 18:00"
-                    onEditingFinished: settings.class_hide_end = text.trim()
+                    onEditingFinished: {
+                        if (!overlayBackend) return
+                        overlayBackend.setClassHide(overlayBackend.classHideEnabled, overlayBackend.classHideDays,
+                                                    overlayBackend.classHideStart, text.trim())
+                    }
                 }
             }
         }
